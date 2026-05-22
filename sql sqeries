@@ -36,6 +36,7 @@ order by
         else 4
     end;
 
+
 create or replace view rfm_sales_with_segments as
 select
     k.InvoiceNo,
