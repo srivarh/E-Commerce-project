@@ -1,1 +1,158 @@
+# RFM SEGMENTATION
+create or replace view rfm_value_group_summary as
+select
+    value_group,
+    count(*) as customer_count,
+    round(sum(monetary)::numeric, 2) as total_revenue,
+    round(avg(recency)::numeric, 2) as avg_recency,
+    round(avg(frequency)::numeric, 2) as avg_frequency,
+    round(avg(monetary)::numeric, 2) as avg_monetary
+from rfm_customer_segments
+group by value_group
+order by
+    case
+        when value_group = 'high value' then 1
+        when value_group = 'medium value' then 2
+        when value_group = 'low value' then 3
+        else 4
+    end;
+
+
+create or replace view rfm_value_group_summary as
+select
+    value_group,
+    count(*) as customer_count,
+    round(sum(monetary)::numeric, 2) as total_revenue,
+    round(avg(recency)::numeric, 2) as avg_recency,
+    round(avg(frequency)::numeric, 2) as avg_frequency,
+    round(avg(monetary)::numeric, 2) as avg_monetary
+from rfm_customer_base
+group by value_group
+order by
+    case
+        when value_group = 'high value' then 1
+        when value_group = 'medium value' then 2
+        when value_group = 'low value' then 3
+        else 4
+    end;
+
+create or replace view rfm_sales_with_segments as
+select
+    k.InvoiceNo,
+    k.CustomerID,
+    k.Country,
+    k.InvoiceDate,
+    date_trunc('month', k.InvoiceDate)::date as month,
+    k.TotalSales,
+    r.recency,
+    r.frequency,
+    r.monetary,
+    r.recency_score,
+    r.frequency_score,
+    r.monetary_score,
+    r.rfm_score,
+    r.rfm_total_score,
+    r.value_group,
+    r.segment
+from known_customer_sales k
+join rfm_customer_segments r
+    on k.CustomerID = r.CustomerID;
+
+#DECILE ANALYSIS
+create or replace view customer_decile_table as
+select
+    s.customerid,
+    s.recency,
+    s.frequency,
+    s.monetary,
+    s.recency_score,
+    s.frequency_score,
+    s.monetary_score,
+    r.rfm_total_score,
+    r.value_group,
+    r.segmentation,
+    ntile(10) over (order by s.monetary desc) as decile
+from rfm_scored s
+join rfm_customer_segments r
+    on s.customerid = r.customerid;
+
+
+create or replace view decile_summary as
+with decile_base as (
+    select
+        decile,
+        count(*) as customer_count,
+        round(sum(monetary)::numeric, 2) as total_revenue,
+        sum(frequency) as total_transactions,
+        round(avg(monetary)::numeric, 2) as avg_revenue_per_customer,
+        round(avg(recency)::numeric, 2) as avg_recency,
+        round(avg(frequency)::numeric, 2) as avg_frequency
+    from customer_decile_table
+    group by decile
+),
+revenue_calc as (
+    select
+        *,
+        round((total_revenue * 100.0 / sum(total_revenue) over ())::numeric, 2) as revenue_percent
+    from decile_base
+)
+select
+    decile,
+    customer_count,
+    total_revenue,
+    revenue_percent,
+    round(sum(revenue_percent) over (order by decile)::numeric, 2) as cumulative_revenue_percent,
+    total_transactions,
+    avg_revenue_per_customer,
+    avg_recency,
+    avg_frequency
+from revenue_calc
+order by decile;
+
+create or replace view customer_decile_table as
+select s.customerid,s.recency,s.frequency,
+s.monetary, s.recency_score,s.frequency_score,s.monetary_score,
+r.rfm_total_score, r.value_group,r.segmentation,
+ntile(10) over (order by s.monetary desc) as decile
+from rfm_scored s
+join rfm_customer_segments r
+    on s.customerid = r.customerid;
+
+select * from customer_decile_table 
+limit 4
+
+create or replace view top_decile_contribution as
+select
+    case
+        when decile between 1 and 3 then 'top deciles 1-3'
+        when decile between 4 and 7 then 'middle deciles 4-7'
+        else 'bottom deciles 8-10'
+    end as decile_group,
+    count(*) as customer_count,
+    round(sum(monetary)::numeric, 2) as total_revenue,
+    round((sum(monetary) * 100.0 / (select sum(monetary) from customer_decile_table))::numeric, 2) as revenue_percent
+from customer_decile_table
+group by
+    case
+        when decile between 1 and 3 then 'top deciles 1-3'
+        when decile between 4 and 7 then 'middle deciles 4-7'
+        else 'bottom deciles 8-10'
+    end
+order by total_revenue desc;
+
+create or replace view decile_kpi_summary as
+select
+    count(distinct customerid) as total_customers,
+    round(sum(monetary)::numeric, 2) as total_revenue,
+    round(avg(monetary)::numeric, 2) as avg_customer_value,
+    round(avg(frequency)::numeric, 2) as avg_frequency,
+    round(avg(recency)::numeric, 2) as avg_recency
+from customer_decile_table;
+
+
+
+
+
+
+
 
